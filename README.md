@@ -1,15 +1,24 @@
-# detr-annnotations
-[源码地址：https://github.com/facebookresearch/detr](https://github.com/facebookresearch/detr)
+# DETR-annnotations
+[DETR原版代码地址：https://github.com/facebookresearch/detr](https://github.com/facebookresearch/detr)
+基于开源仓库基础上加了一些注释 [detr-annotations:https://github.com/HuKai97/detr-annotations](https://github.com/HuKai97/detr-annotations)
 
-一个detr的中文注释版本，供大家参考学习！
+detr的中文注释版本
 
-主要是注释了：main.py和models/下面的相关模型文件。
+主要参考视频
 
-A Chinese annotated version of detr!
+[DETR源码解读1:https://www.bilibili.com/video/BV1TY4y147bH](https://www.bilibili.com/video/BV1TY4y147bH)
+# 第一级数据集构建
+使用coco数据集，解析coco文件并进行预处理
+# 第二集搭建骨架
+首先用resnet提取图像特征，调包使用resnet50
+然后创建位置编码
+正余弦位置编码sine
+使用两个维度xy，256个hidden层各分一半
+分别进行行累加和列累加，再规范化到0-2pi，然后使用下图公式来进行编码
+![image](image/1.png)
+先按照奇数偶数计算sin和cos，然后使用stack合并并展平，之后用cat连接起来并用permute重新排序，最后返回pos位置编码
 
-# CSDN源码讲解导航
+# 第三集骨架搭建
+搭建resnet50网络并进行前向传播，以及和位置编码合并
 
-- [【DETR源码解析】一、整体模型解析](https://blog.csdn.net/qq_38253797/article/details/127618806)
-- [【DETR源码解析】二、Backbone模块](https://blog.csdn.net/qq_38253797/article/details/127614228)
-- [【DETR源码解析】三、Transformer模块](https://blog.csdn.net/qq_38253797/article/details/127616634)
-- [【DETR源码解析】四、损失计算和后处理模块](https://blog.csdn.net/qq_38253797/article/details/127618402)
+# 第四集
