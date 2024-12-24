@@ -15,6 +15,9 @@ class PositionEmbeddingSine(nn.Module):
     This is a more standard version of the position embedding, very similar to the one
     used by the Attention is all you need paper, generalized to work on images.
     """
+    # 正余弦位置编码
+    # 正弦位置编码是一种用于在序列数据中嵌入位置信息的技术，特别是在 Transformer 架构中。
+    # 它通过正弦和余弦函数生成位置编码，使得模型能够利用位置信息来进行更好的预测和建模。
     def __init__(self, num_pos_feats=64, temperature=10000, normalize=False, scale=None):
         super().__init__()
         self.num_pos_feats = num_pos_feats    # 128维度  x/y  = d_model/2
@@ -31,33 +34,44 @@ class PositionEmbeddingSine(nn.Module):
         x = tensor_list.tensors   # [bs, 2048, 19, 26]  预处理后的 经过backbone 32倍下采样之后的数据  对于小图片而言多余部分用0填充
         mask = tensor_list.mask   # [bs, 19, 26]  用于记录矩阵中哪些地方是填充的（原图部分值为False，填充部分值为True）
         assert mask is not None
+        # 进行取反操作
         not_mask = ~mask   # True的位置才是真实有效的位置
 
         # 考虑到图像本身是2维的 所以这里使用的是2维的正余弦位置编码
         # 这样各行/列都映射到不同的值 当然有效位置是正常值 无效位置会有重复值 但是后续计算注意力权重会忽略这部分的
         # 而且最后一个数字就是有效位置的总和，方便max规范化
         # 计算此时y方向上的坐标  [bs, 19, 26]
-        y_embed = not_mask.cumsum(1, dtype=torch.float32)
+        # batchsize为2，所以拿到了每个位置的pos索引
+        y_embed = not_mask.cumsum(1, dtype=torch.float32) # 行累加
         # 计算此时x方向的坐标    [bs, 19, 26]
-        x_embed = not_mask.cumsum(2, dtype=torch.float32)
+        x_embed = not_mask.cumsum(2, dtype=torch.float32) # 列累加
 
         # 最大值规范化 除以最大值 再乘以2*pi 最终把坐标规范化到0-2pi之间
+        # 方法：min-max归一化 也称为离差标准化，是对原始数据的线性变换，使结果值映射到[0 – 1]之间。转换函数如下：
+        # x* = ( x − min ) / ( max − min )
+        # 这里前面是从0开始累加的，所以min为0
+        # 其中max为样本数据的最大值，min为样本数据的最小值。这种方法有个缺陷就是当有新数据加入时，可能导致max和min的变化，需要重新定义。
         if self.normalize:
             eps = 1e-6
-            y_embed = y_embed / (y_embed[:, -1:, :] + eps) * self.scale
-            x_embed = x_embed / (x_embed[:, :, -1:] + eps) * self.scale
+            y_embed = y_embed / (y_embed[:, -1:, :] + eps) * self.scale #因为是累加，所以最后一行或列肯定是最大的，于是取-1，其中eps是为了防止除数为0
+            x_embed = x_embed / (x_embed[:, :, -1:] + eps) * self.scale # self.scale为2pi
 
+        #初始化一个128维度的向量
         dim_t = torch.arange(self.num_pos_feats, dtype=torch.float32, device=x.device)   # 0 1 2 .. 127
-        # 2i/2i+1: 2 * (dim_t // 2)  self.temperature=10000   self.num_pos_feats = d/2
+        # 2i/2i+1: 2 * (dim_t // 2)  self.temperature=10000   self.num_pos_feats = d/2 = 128
+        # 2 * (dim_t // 2)  dim_t//2为偶数  dim_t为奇数时向上取整
         dim_t = self.temperature ** (2 * (dim_t // 2) / self.num_pos_feats)   # 分母
 
-        pos_x = x_embed[:, :, :, None] / dim_t   # 正余弦括号里面的公式
+        pos_x = x_embed[:, :, :, None] / dim_t   # 正余弦括号里面的公式  posx/10000^(2i/128)
         pos_y = y_embed[:, :, :, None] / dim_t   # 正余弦括号里面的公式
         # x方向位置编码: [bs,19,26,64][bs,19,26,64] -> [bs,19,26,64,2] -> [bs,19,26,128]
+        # 每隔两个取一次 sin是从0开始，cos是从1开始（i=0，1，2，3……）
+        # flatten就是从第一个数开始后面的展平，比如[bs,19,26,64,2] -> [bs,19,26,128]就是flatten（3），从64往后，战平，就是64*2=128
         pos_x = torch.stack((pos_x[:, :, :, 0::2].sin(), pos_x[:, :, :, 1::2].cos()), dim=4).flatten(3)
         # y方向位置编码: [bs,19,26,64][bs,19,26,64] -> [bs,19,26,64,2] -> [bs,19,26,128]
         pos_y = torch.stack((pos_y[:, :, :, 0::2].sin(), pos_y[:, :, :, 1::2].cos()), dim=4).flatten(3)
         # concat: [bs,19,26,128][bs,19,26,128] -> [bs,19,26,256] -> [bs,256,19,26]
+        # permute调换顺序
         pos = torch.cat((pos_y, pos_x), dim=3).permute(0, 3, 1, 2)
 
         # [bs,256,19,26]  dim=1时  前128个是y方向位置编码  后128个是x方向位置编码
@@ -100,15 +114,17 @@ def build_position_encoding(args):
     创建位置编码
     args: 一系列参数  args.hidden_dim: transformer中隐藏层的维度   args.position_embedding: 位置编码类型 正余弦sine or 可学习learned
     """
-    # N_steps = 128 = 256 // 2  backbone输出[bs,256,25,34]  256维度的特征
+    # N_steps = 128 = 256 // 2  backbone输出[bs,256,25,34]  256维度的特征 hidden_dim=256
     # 而传统的位置编码应该也是256维度的, 但是detr用的是一个x方向和y方向的位置编码concat的位置编码方式  这里和ViT有所不同
     # 二维位置编码   前128维代表x方向位置编码  后128维代表y方向位置编码
     N_steps = args.hidden_dim // 2
     if args.position_embedding in ('v2', 'sine'):
+        # 是否是sin编码
         # TODO find a better way of exposing other arguments
         # [bs,256,19,26]  dim=1时  前128个是y方向位置编码  后128个是x方向位置编码
         position_embedding = PositionEmbeddingSine(N_steps, normalize=True)
     elif args.position_embedding in ('v3', 'learned'):
+        # 还是可学习的位置编码
         position_embedding = PositionEmbeddingLearned(N_steps)
     else:
         raise ValueError(f"not supported {args.position_embedding}")

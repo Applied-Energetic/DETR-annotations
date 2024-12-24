@@ -134,7 +134,7 @@ class Joiner(nn.Sequential):
 
 
 def build_backbone(args):
-    # 搭建backbone
+    # 搭建backbone 对backbone输出的特征图的尺寸进行统一，用于后续transformer模块
     # 位置编码  PositionEmbeddingSine()
     position_embedding = build_position_encoding(args)
     train_backbone = args.lr_backbone > 0   # 是否需要训练backbone  True
@@ -142,6 +142,7 @@ def build_backbone(args):
     # 生成backbone  resnet50
     backbone = Backbone(args.backbone, train_backbone, return_interm_layers, args.dilation)
     # 将backbone输出与位置编码相加   0: backbone   1: PositionEmbeddingSine()
+    # 个人感觉只是进行了规范化
     model = Joiner(backbone, position_embedding)
     model.num_channels = backbone.num_channels   # 512
     return model

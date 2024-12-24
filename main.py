@@ -132,7 +132,7 @@ def main(args):
 
     device = torch.device(args.device)
 
-    # fix the seed for reproducibility  固定随机数种子
+    # fix the seed for reproducibility  固定随机数种子 以便后续可以复现
     seed = args.seed + utils.get_rank()
     torch.manual_seed(seed)
     np.random.seed(seed)
@@ -148,6 +148,10 @@ def main(args):
     model.to(device)
 
     # DDP分布式训练
+    # DDP，即Distributed Data Parallel（分布式数据并行），是一种在深度学习中用于加速模型训练的技术。
+    # 它允许你将训练任务分布在多个GPU或跨多台机器上的多个GPU上进行。
+    # 每个进程拥有模型的一个副本，并且每个副本都处理输入数据的不同部分（通常是通过不同的数据批次）。
+    # 在每个训练步骤结束时，所有进程之间会同步它们的梯度，并更新各自的模型参数，以确保所有进程上的模型保持一致。
     model_without_ddp = model
     if args.distributed:
         model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu])
@@ -171,6 +175,8 @@ def main(args):
     # 优化器和学习率调整策略
     optimizer = torch.optim.AdamW(param_dicts, lr=args.lr,
                                   weight_decay=args.weight_decay)
+    # 每个lr_drop个epoch，lr = gamma*lr_drop ， gamma默认0.1
+    # 每隔200epoc学习率降低为原来的十分之一
     lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, args.lr_drop)
     # ------------------------------------------ 学习率策略和优化器部分 ------------------------------------------
 
@@ -180,15 +186,20 @@ def main(args):
     dataset_val = build_dataset(image_set='val', args=args)
     # 定义数据集采样策略
     if args.distributed:
+        # 分布式训练时候用这个
         sampler_train = DistributedSampler(dataset_train)
         sampler_val = DistributedSampler(dataset_val, shuffle=False)
     else:
+        # 如果单块显卡用这个，一般是走这里
         sampler_train = torch.utils.data.RandomSampler(dataset_train)
         sampler_val = torch.utils.data.SequentialSampler(dataset_val)
 
-    batch_sampler_train = torch.utils.data.BatchSampler(
-        sampler_train, args.batch_size, drop_last=True)
-
+    batch_sampler_train = torch.utils.data.BatchSampler(sampler_train, args.batch_size, drop_last=True)
+    # 按照batch来取
+    # 这里就完成数据加载了，一共完成了，
+    # 1把遮挡对象去掉
+    # 2对宽高进行筛选
+    # 3将一个batch里面tensor统一，进行填充
     data_loader_train = DataLoader(dataset_train, batch_sampler=batch_sampler_train,
                                    collate_fn=utils.collate_fn, num_workers=args.num_workers)
     data_loader_val = DataLoader(dataset_val, args.batch_size, sampler=sampler_val,

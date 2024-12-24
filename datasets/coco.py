@@ -18,7 +18,7 @@ class CocoDetection(torchvision.datasets.CocoDetection):
     def __init__(self, img_folder, ann_file, transforms, return_masks):
         super(CocoDetection, self).__init__(img_folder, ann_file)
         self._transforms = transforms
-        self. prepare = ConvertCocoPolysToMask(return_masks)
+        self.prepare = ConvertCocoPolysToMask(return_masks)
 
     def __getitem__(self, idx):
         # 加载idx这张图片和label数据
@@ -65,11 +65,12 @@ class ConvertCocoPolysToMask(object):
         image_id = torch.tensor([image_id])
 
         anno = target["annotations"]
-
+        # 第一件事，检查这个mask是否有‘被挡住’这个标签，如果有，就不要了
         anno = [obj for obj in anno if 'iscrowd' not in obj or obj['iscrowd'] == 0]
 
         boxes = [obj["bbox"] for obj in anno]
         # guard against no boxes via resizing
+        # 检测下目标的坐标是否会超过图片
         boxes = torch.as_tensor(boxes, dtype=torch.float32).reshape(-1, 4)
         boxes[:, 2:] += boxes[:, :2]
         boxes[:, 0::2].clamp_(min=0, max=w)
@@ -159,6 +160,8 @@ def build(image_set, args):
     params image_set: train/val  训练还是验证
     params args: main Namespaces中的参数
     """
+    current_path = Path.cwd()
+    print(current_path)
     root = Path(args.coco_path)  # ..\datasets\coco
     assert root.exists(), f'provided COCO path {root} does not exist'
     mode = 'instances'

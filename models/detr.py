@@ -60,6 +60,18 @@ class DETR(nn.Module):
                - "aux_outputs": Optional, only returned when auxilary losses are activated. It is a list of
                                 dictionnaries containing the two above keys for each decoder layer.
         """
+        """
+        前向函数 `forward` 接受一个 NestedTensor，其包含以下内容：
+        - samples.tensor: 批量图像，形状为 [batch_size x 3 x H x W]
+        - samples.mask: 二进制掩码，形状为 [batch_size x H x W]，其中填充像素位置为 1
+        
+        该函数返回一个字典，包含以下元素：
+        - "pred_logits": 所有查询的分类 logits（包括无对象），形状为 [batch_size x num_queries x (num_classes + 1)]
+        - "pred_boxes": 所有查询的归一化边界框坐标，表示为 (center_x, center_y, height, width)。这些值在 [0, 1] 范围内归一化，
+                        相对于每张图像的实际尺寸（不考虑可能的填充）。有关如何获取未归一化的边界框，请参阅 PostProcess。
+        - "aux_outputs": 可选，仅当启用辅助损失时返回。它是一个列表，包含每个解码层的上述两个键的字典。
+        """
+
         if isinstance(samples, (list, torch.Tensor)):
             samples = nested_tensor_from_tensor_list(samples)
         # out: list{0: tensor=[bs,2048,19,26] + mask=[bs,19,26]}  经过backbone resnet50 block5输出的结果
@@ -102,6 +114,7 @@ class DETR(nn.Module):
 
 
 class SetCriterion(nn.Module):
+    # 定义损失函数
     """ This class computes the loss for DETR.
     The process happens in two steps:
         1) we compute hungarian assignment between ground truth boxes and the outputs of the model

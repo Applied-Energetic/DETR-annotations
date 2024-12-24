@@ -157,6 +157,7 @@ def reduce_dict(input_dict, average=True):
 
 
 class MetricLogger(object):
+    # 用于记录和显示训练过程中度量（metrics）的日志工具，通常在机器学习或深度学习的训练循环中使用。它提供了方便的方法来更新、同步和打印各种度量信息。以下是代码的详细解释：
     def __init__(self, delimiter="\t"):
         self.meters = defaultdict(SmoothedValue)
         self.delimiter = delimiter
@@ -310,6 +311,7 @@ def nested_tensor_from_tensor_list(tensor_list: List[Tensor]):
     # TODO make this more general
     if tensor_list[0].ndim == 3:
         if torchvision._is_tracing():
+            # 这里会跳过
             # nested_tensor_from_tensor_list() does not export well to ONNX
             # call _onnx_nested_tensor_from_tensor_list() instead
             return _onnx_nested_tensor_from_tensor_list(tensor_list)
@@ -317,7 +319,7 @@ def nested_tensor_from_tensor_list(tensor_list: List[Tensor]):
         # TODO make it support different-sized images
         max_size = _max_by_axis([list(img.shape) for img in tensor_list])
         # min_size = tuple(min(s) for s in zip(*[img.shape for img in tensor_list]))
-        batch_shape = [len(tensor_list)] + max_size
+        batch_shape = [len(tensor_list)] + max_size # [2,3,898,769]前面的是2，后面的maxsize是3 898 769表示通道、宽、高
         b, c, h, w = batch_shape
         dtype = tensor_list[0].dtype
         device = tensor_list[0].device
