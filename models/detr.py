@@ -39,8 +39,10 @@ class DETR(nn.Module):
         # 回归
         self.bbox_embed = MLP(hidden_dim, hidden_dim, 4, 3)
         # self.query_embed 类似于传统目标检测里面的anchor 这里设置了100个  [100,256]
-        # nn.Embedding 等价于 nn.Parameter
+        # nn.Embedding 等价于 nn.Parameter、
+        # 等价 self.query_embed = Parameter(torch(num_queries, hidden_dim))
         self.query_embed = nn.Embedding(num_queries, hidden_dim)
+        # 初始化卷积层，并改变通道数
         self.input_proj = nn.Conv2d(backbone.num_channels, hidden_dim, kernel_size=1)
         self.backbone = backbone
         self.aux_loss = aux_loss   # True
@@ -89,6 +91,10 @@ class DETR(nn.Module):
         # self.query_embed.weight  类似于传统目标检测里面的anchor 这里设置了100个
         # pos[-1]  位置编码  [bs, 256, 19, 26]
         # hs: [6, bs, 100, 256]
+        # self.input_proj(src)：将输入特征图src投影到适合Transformer的维度。
+        # self.query_embed.weight：获取查询嵌入权重。
+        # pos[-1]：获取位置编码。
+        # self.transformer(...)[0]：调用Transformer模型，返回解码器输出的第一个元素。
         hs = self.transformer(self.input_proj(src), mask, self.query_embed.weight, pos[-1])[0]
 
         # 分类 [6个decoder, bs, 100, 256] -> [6, bs, 100, 92(类别)]

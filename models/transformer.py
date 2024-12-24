@@ -33,6 +33,33 @@ class Transformer(nn.Module):
         normalize_before: 是否使用前置LN
         return_intermediate_dec: 是否返回decoder中间层结果  False
         """
+
+        '''
+        LayerNorm = LN规范化（用于NLP）
+        BN（Batch Normalization）、GN（Group Normalization）和LN（Layer Normalization）是深度学习中常用的归一化技术，
+        它们的主要目的是减少内部协变量偏移（internal covariate shift），加速训练过程，并提高模型的泛化能力。
+        以下是它们的区别：
+        Batch Normalization (BN):
+        作用范围：对每个小批量（batch）中的数据进行归一化。
+        计算方式：在每个batch内，对每个特征维度计算均值和方差，然后用这些统计量对数据进行归一化。
+        优点：可以有效减少内部协变量偏移，加速训练，允许使用更高的学习率。
+        缺点：依赖于batch size，当batch size较小时效果不佳；在推理阶段需要维护运行时的均值和方差。
+        Group Normalization (GN):
+        作用范围：将通道分成若干组，在每组内进行归一化。
+        计算方式：对于每个样本，将其通道分为若干组，每组内的数据计算均值和方差，然后进行归一化。
+        优点：不受batch size的影响，适用于小batch size或单个样本的情况；在某些任务上表现优于BN。
+        缺点：需要选择合适的组数，增加了一些超参数调整的工作。
+        Layer Normalization (LN):
+        作用范围：对每个样本的所有特征进行归一化。
+        计算方式：对于每个样本，计算所有特征的均值和方差，然后进行归一化。
+        优点：完全独立于batch size，适用于RNN等序列模型；有助于稳定训练过程。
+        缺点：对于图像等高维数据，可能不如BN或GN效果好，因为没有利用到特征之间的相关性。
+        总结
+        BN适合大多数卷积神经网络，特别是在batch size足够大的情况下。
+        GN适合小batch size或需要分组处理的场景，如图像分割、目标检测等。
+        LN适合RNN及其变体（如Transformer），因为它能更好地处理序列数据。
+        在代码中，nn.LayerNorm被用于Transformer模型中的归一化层，以确保每个样本的特征分布更加稳定，从而加速训练并提高模型性能。
+        '''
         # 初始化一个小encoder
         encoder_layer = TransformerEncoderLayer(d_model, nhead, dim_feedforward,
                                                 dropout, activation, normalize_before)
@@ -95,7 +122,11 @@ class Transformer(nn.Module):
 
 
 class TransformerEncoder(nn.Module):
-
+        # 初始化TransformerEncoder。
+        # Args:
+        #     encoder_layer: TransformerEncoderLayer实例，作为编码器层的模板。
+        #     num_layers: int，编码器层的数量。
+        #     norm: Optional[nn.Module]，可选的层归一化模块。
     def __init__(self, encoder_layer, num_layers, norm=None):
         super().__init__()
         # 复制num_layers=6份encoder_layer=TransformerEncoderLayer
@@ -192,24 +223,44 @@ class TransformerEncoderLayer(nn.Module):
         super().__init__()
         """
         小encoder层  结构：multi-head Attention + add&Norm + feed forward + add&Norm
-        d_model: mlp 前馈神经网络的dim
+        d_model: mlp 前馈神经网络的dim 512
         nhead: 8头注意力机制
         dim_feedforward: 前馈神经网络的维度 2048
         dropout: 0.1
         activation: 激活函数类型
         normalize_before: 是否使用先LN  False
         """
+        '''
+        多注意力头
+        layer = torch.nn.MultiheadAttention(
+            embed_dim = dims,# 所有头总共需要的输入维度
+            num_heads = heads, # 单注意力头的总共个数
+            dropout = dropout_pro)# 单注意力头
+        '''
         self.self_attn = nn.MultiheadAttention(d_model, nhead, dropout=dropout)
-        # Implementation of Feedforward model
+        '''
+        torch.nn.Linear(in_features, # 输入的神经元个数
+           out_features, # 输出神经元个数
+           bias=True # 是否包含偏置
+           )
+        '''
         self.linear1 = nn.Linear(d_model, dim_feedforward)
         self.dropout = nn.Dropout(dropout)
         self.linear2 = nn.Linear(dim_feedforward, d_model)
-
+        # LN正则化
         self.norm1 = nn.LayerNorm(d_model)
         self.norm2 = nn.LayerNorm(d_model)
+
+        '''
+        Dropout 层是一种正则化技术，主要用于防止神经网络模型过拟合。
+        在训练过程中，Dropout 层会随机将一部分神经元的输出设置为零，这样可以防止神经元之间的共适应性，从而提高模型的泛化能力。
+        0.1表示每次丢弃10%的神经元
+        '''
+
         self.dropout1 = nn.Dropout(dropout)
         self.dropout2 = nn.Dropout(dropout)
 
+        # 调用激活函数
         self.activation = _get_activation_fn(activation)
         self.normalize_before = normalize_before
 
@@ -223,6 +274,7 @@ class TransformerEncoderLayer(nn.Module):
                      src_key_padding_mask: Optional[Tensor] = None,
                      pos: Optional[Tensor] = None):
         """
+        src 对应backbone最后一层输出的特征图，并且维度映射到了hidden_dim shape为[H*W,b,hidden_dim]
         src: [494, bs, 256]  backbone输入下采样32倍后 再 压缩维度到256的特征图
         src_mask: None
         src_key_padding_mask: [bs, 494]  记录哪些位置有pad True 没意义 不需要计算attention
@@ -245,6 +297,7 @@ class TransformerEncoderLayer(nn.Module):
         src2 = self.self_attn(q, k, value=src, attn_mask=src_mask,
                               key_padding_mask=src_key_padding_mask)[0]
         # add + norm + feed forward + add + norm
+        # 残差链接
         src = src + self.dropout1(src2)
         src = self.norm1(src)
         src2 = self.linear2(self.dropout(self.activation(self.linear1(src))))
@@ -394,6 +447,7 @@ class TransformerDecoderLayer(nn.Module):
 
 
 def _get_clones(module, N):
+    # 深拷贝，赋值N份
     return nn.ModuleList([copy.deepcopy(module) for i in range(N)])
 
 
