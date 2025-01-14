@@ -339,10 +339,11 @@ class TransformerDecoderLayer(nn.Module):
         self.linear1 = nn.Linear(d_model, dim_feedforward)
         self.dropout = nn.Dropout(dropout)
         self.linear2 = nn.Linear(dim_feedforward, d_model)
-
+        # LN规范
         self.norm1 = nn.LayerNorm(d_model)
         self.norm2 = nn.LayerNorm(d_model)
         self.norm3 = nn.LayerNorm(d_model)
+        # Dropout正则化
         self.dropout1 = nn.Dropout(dropout)
         self.dropout2 = nn.Dropout(dropout)
         self.dropout3 = nn.Dropout(dropout)
@@ -372,9 +373,11 @@ class TransformerDecoderLayer(nn.Module):
         query_pos: [100, bs, 256]  query embedding/tgt的位置编码  负责建模物体与物体之间的位置关系  随机初始化的
         tgt_mask、memory_mask、tgt_key_padding_mask是防止作弊的 这里都没有使用
         """
+
         # 第一个self-attention的目的：找到图像中物体的信息 -> tgt
         # 第一个多头自注意力层：输入qkv都和Encoder无关  都来自于tgt/query embedding
         # 通过第一个self-attention  可以不断建模物体与物体之间的关系  可以知道图像当中哪些位置会存在物体  物体信息->tgt
+
         # query embedding  +  query_pos
         q = k = self.with_pos_embed(tgt, query_pos)
         # masked multi-head self-attention  计算query embedding的自注意力
